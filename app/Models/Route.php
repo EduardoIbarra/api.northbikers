@@ -27,6 +27,7 @@ class Route extends Model
         'video_id',
         'rules_file',
         'banner',
+        'amount',
     ];
 
     protected $dates = ['deleted_at'];

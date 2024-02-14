@@ -18,4 +18,4 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
-Route::get('generate_stripe_payment/{income_id}/{route_id}/{user_id}', [PaymentController::class,'generateUrlToPay']);
+Route::get('generate_stripe_payment/{event_profile_id}', [PaymentController::class,'generateUrlToPay']);
