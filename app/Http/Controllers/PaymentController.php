@@ -40,10 +40,10 @@ class PaymentController extends BaseController
         $totalAmountIncludingFees = 1000; // This is $route->amount in your case
 
         // Rearrange the formula to solve for the original amount before fees
-        $amountBeforeFees = ($totalAmountIncludingFees - 3) / 1.072;
+        $amountBeforeFees = $totalAmountIncludingFees / 1.036;
 
         // Calculate the fee based on the recalculated original amount (for demonstration)
-        $calculatedFee = ($amountBeforeFees * 0.072) + 3;
+        $calculatedFee = $amountBeforeFees * 0.036;
 
         // Calculate the final total to verify it matches the intended total amount including fees
         $finalTotalWithFees = $amountBeforeFees + $calculatedFee;
