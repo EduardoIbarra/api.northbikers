@@ -124,6 +124,42 @@ class PaymentController extends BaseController
         return response()->json(['success' => true]);
     }
 
+    public function handle_webhookOwnAccounts(Request $request)
+    {
+        \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
+
+        // Verify the webhook signature
+        $payload = $request->getContent();
+        $sig_header = $request->header('Stripe-Signature');
+        $endpoint_secret = env('STRIPE_WEBHOOK_SECRET');
+
+        try {
+            $event = \Stripe\Webhook::constructEvent(
+                $payload,
+                $sig_header,
+                $endpoint_secret
+            );
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+
+        // Handle the event
+        switch ($event->type) {
+            case 'checkout.session.completed':
+                $stripe_id = $event->data->object->id;
+                $eventProfileId = $event->data->object->client_reference_id;
+                $event_id = $event->id;
+
+                $this->validateExternalPayment($stripe_id, $eventProfileId, $event_id);
+                break;
+            default:
+                // Handle other types of events if needed
+                break;
+        }
+
+        return response()->json(['success' => true]);
+    }
+
     private function validateExternalPayment($stripe_id, $income_id, $stripe_event_id)
     {
         // Log a message to the Laravel log file

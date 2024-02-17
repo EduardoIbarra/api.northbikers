@@ -20,3 +20,4 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 });
 Route::get('generate_stripe_payment/{event_profile_id}', [PaymentController::class,'generateUrlToPay']);
 Route::post('webhook_connected_accounts', [PaymentController::class,'handle_webhookConnectedAccounts']);
+Route::post('webhook_own_accounts', [PaymentController::class,'handle_webhookOwnAccounts']);
