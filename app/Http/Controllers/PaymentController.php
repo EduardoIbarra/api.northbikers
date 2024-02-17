@@ -160,7 +160,7 @@ class PaymentController extends BaseController
                 $stripeId = $event->data->object->id;
                 $eventProfileId = $event->data->object->client_reference_id;
                 $eventId = $event->id;
-                $status = $event->id;
+                $status = $event->data->object->payment_status;
     
                 // Perform necessary actions based on the event
                 $this->validateExternalPayment($stripeId, $eventProfileId, $eventId, $status);
