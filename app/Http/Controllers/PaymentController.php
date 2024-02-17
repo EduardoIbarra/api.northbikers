@@ -218,6 +218,8 @@ class PaymentController extends BaseController
         $email->setTemplateId("070db3211c604dd79dcd7b726dc10be1"); // Set SendGrid template ID
         $email->addTo($eventProfile->stripe_webhook_email_notification, $eventProfile->full_name);
 
+        \Log::info('Email to: ' . $eventProfile->stripe_webhook_email_notification);
+
         // Add dynamic template data
         foreach ($emailData as $key => $value) {
             $email->addDynamicTemplateData($key, $value);
