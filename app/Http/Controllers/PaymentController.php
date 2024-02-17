@@ -95,36 +95,46 @@ class PaymentController extends BaseController
     public function handle_webhookConnectedAccounts(Request $request)
     {
         \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
-
-        // Verify the webhook signature
+    
+        // Retrieve the request body and signature header
         $payload = $request->getContent();
-        $sig_header = $request->header('Stripe-Signature');
-        $endpoint_secret = env('STRIPE_WEBHOOK_SECRET');
-
+        $sigHeader = $request->header('Stripe-Signature');
+    
+        $endpointSecret = env('STRIPE_WEBHOOK_OWN_SECRET');
+    
         try {
+            // Construct the event
             $event = \Stripe\Webhook::constructEvent(
                 $payload,
-                $sig_header,
-                $endpoint_secret
+                $sigHeader,
+                $endpointSecret
             );
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 400);
+        } catch (\UnexpectedValueException $e) {
+            // Invalid payload
+            return response()->json(['error' => 'Invalid payload'], 400);
+        } catch (\Stripe\Exception\SignatureVerificationException $e) {
+            // Invalid signature
+            return response()->json(['error' => 'Invalid signature'], 400);
         }
-
+    
         // Handle the event
         switch ($event->type) {
             case 'checkout.session.completed':
-                $stripe_id = $event->data->object->id;
+                // Extract required data from the event
+                $stripeId = $event->data->object->id;
                 $eventProfileId = $event->data->object->client_reference_id;
-                $event_id = $event->id;
-
-                $this->validateExternalPayment($stripe_id, $eventProfileId, $event_id);
+                $eventId = $event->id;
+                $status = $event->data->object->payment_status;
+    
+                // Perform necessary actions based on the event
+                $this->validateExternalPayment($stripeId, $eventProfileId, $eventId, $status);
                 break;
             default:
                 // Handle other types of events if needed
                 break;
         }
-
+    
+        // Respond with success
         return response()->json(['success' => true]);
     }
 
@@ -215,7 +225,7 @@ class PaymentController extends BaseController
         // Replace 'YOUR_TEMPLATE_ID' with your SendGrid template ID
         $email = new \SendGrid\Mail\Mail();
         $email->setFrom("multitut.programacion@gmail.com", "North Bikers");
-        $email->setTemplateId("070db3211c604dd79dcd7b726dc10be1"); // Set SendGrid template ID
+        $email->setTemplateId("d-070db3211c604dd79dcd7b726dc10be1"); // Set SendGrid template ID
         $email->addTo($eventProfile->stripe_webhook_email_notification, $eventProfile->full_name);
 
         \Log::info('Email to: ' . $eventProfile->stripe_webhook_email_notification);
