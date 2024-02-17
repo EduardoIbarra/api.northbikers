@@ -187,17 +187,17 @@ class PaymentController extends BaseController
         $eventProfile = EventProfile::find($eventProfileId);
 
         // Retrieve the route_id for the given event profile
-        $routeId = DB::table('event_profiles')
+        $routeId = DB::table('event_profile')
             ->where('id', $eventProfileId)
             ->value('route_id');
 
         // Increment participant_number for the given route_id
-        $participantNumber = DB::table('event_profiles')
+        $participantNumber = DB::table('event_profile')
             ->where('route_id', $routeId)
             ->max('participant_number') + 1;
 
         // Update the eventProfile on the database
-        DB::table('event_profiles')
+        DB::table('event_profile')
             ->where('id', $eventProfileId)
             ->update([
                 'stripe_checkout_id' => $stripe_id,
