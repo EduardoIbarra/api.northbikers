@@ -206,6 +206,9 @@ class PaymentController extends BaseController
             ->where('route_id', $routeId)
             ->max('participant_number') + 1;
 
+        \Log::info('Participan number: ' . $participantNumber);
+
+
         // Update the eventProfile on the database
         DB::table('event_profile')
             ->where('id', $eventProfileId)
@@ -224,7 +227,7 @@ class PaymentController extends BaseController
         // Replace 'YOUR_SENDGRID_API_KEY' with your actual SendGrid API key
         // Replace 'YOUR_TEMPLATE_ID' with your SendGrid template ID
         $email = new \SendGrid\Mail\Mail();
-        $email->setFrom("advmx.lam@gmail.com", "Joaquín");
+        $email->setFrom("advmx.lam@gmail.com", "Joaquín Lam de ADV NL");
         $email->setTemplateId("d-070db3211c604dd79dcd7b726dc10be1"); // Set SendGrid template ID
         $email->addTo($eventProfile->stripe_webhook_email_notification, $eventProfile->full_name);
 
