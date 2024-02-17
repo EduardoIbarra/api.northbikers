@@ -220,7 +220,7 @@ class PaymentController extends BaseController
 
         // Prepare data for SendGrid template
         $emailData = [
-            '%participant_number%' => $participantNumber
+            'participant_number' => $participantNumber
         ];
 
         // Send confirmation email using SendGrid template
