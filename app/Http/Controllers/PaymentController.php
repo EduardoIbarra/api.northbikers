@@ -7,8 +7,12 @@ use App\Models\Customer;
 use App\Models\EventProfile;
 use App\Models\Route;
 use App\Models\Profile;
+use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Stripe\StripeClient;
+use SendGrid\Mail\Substitution;
+
 
 class PaymentController extends BaseController
 {
@@ -156,9 +160,10 @@ class PaymentController extends BaseController
                 $stripeId = $event->data->object->id;
                 $eventProfileId = $event->data->object->client_reference_id;
                 $eventId = $event->id;
+                $status = $event->id;
     
                 // Perform necessary actions based on the event
-                $this->validateExternalPayment($stripeId, $eventProfileId, $eventId);
+                $this->validateExternalPayment($stripeId, $eventProfileId, $eventId, $status);
                 break;
             default:
                 // Handle other types of events if needed
@@ -169,13 +174,64 @@ class PaymentController extends BaseController
         return response()->json(['success' => true]);
     }
 
-    private function validateExternalPayment($stripe_id, $income_id, $stripe_event_id)
+    private function validateExternalPayment($stripe_id, $eventProfileId, $stripe_event_id, $status)
     {
         // Log a message to the Laravel log file
         \Log::info('Validating external payment', [
             'stripe_id' => $stripe_id,
-            'income_id' => $income_id,
-            'stripe_event_id' => $stripe_event_id
+            'eventProfileId' => $eventProfileId,
+            'stripe_event_id' => $stripe_event_id,
+            'status' => $status
         ]);
+
+        $eventProfile = EventProfile::find($eventProfileId);
+
+        // Retrieve the route_id for the given event profile
+        $routeId = DB::table('event_profiles')
+            ->where('id', $eventProfileId)
+            ->value('route_id');
+
+        // Increment participant_number for the given route_id
+        $participantNumber = DB::table('event_profiles')
+            ->where('route_id', $routeId)
+            ->max('participant_number') + 1;
+
+        // Update the eventProfile on the database
+        DB::table('event_profiles')
+            ->where('id', $eventProfileId)
+            ->update([
+                'stripe_checkout_id' => $stripe_id,
+                'payment_status' => $status,
+                'participant_number' => $participantNumber
+            ]);
+
+        // Prepare data for SendGrid template
+        $emailData = [
+            '%participant_number%' => $participantNumber
+        ];
+
+        // Send confirmation email using SendGrid template
+        // Replace 'YOUR_SENDGRID_API_KEY' with your actual SendGrid API key
+        // Replace 'YOUR_TEMPLATE_ID' with your SendGrid template ID
+        $email = new \SendGrid\Mail\Mail();
+        $email->setFrom("multitut.programacion@gmail.com", "North Bikers");
+        $email->setTemplateId("070db3211c604dd79dcd7b726dc10be1"); // Set SendGrid template ID
+        $email->addTo($eventProfile->stripe_webhook_email_notification, $eventProfile->full_name);
+
+        // Add dynamic template data
+        foreach ($emailData as $key => $value) {
+            $email->addDynamicTemplateData($key, $value);
+        }
+
+        $sendgrid = new \SendGrid(getenv('SENDGRID_API_KEY'));
+
+        try {
+            $response = $sendgrid->send($email);
+            \Log::info('Email sent successfully.');
+        } catch (Exception $e) {
+            \Log::error('Failed to send email: ' . $e->getMessage());
+        }
     }
+
+
 }
