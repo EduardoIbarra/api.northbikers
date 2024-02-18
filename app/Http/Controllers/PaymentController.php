@@ -41,22 +41,28 @@ class PaymentController extends BaseController
             return $this->sendError('ALREADY_PAID_REFRESH');
         }
 
-        // Define the total amount including fees
-        $totalAmountIncludingFees = 1000; // This is $route->amount in your case
+        // User's total payment
+        $totalAmountIncludingFees = $route->amount;
 
-        // Rearrange the formula to solve for the original amount before fees
-        $amountBeforeFees = $totalAmountIncludingFees / 1.036;
+        // Calculate the Stripe and app fees and the merchant amount dynamically
+        $stripeFeePercentage = 0.036; // 3.6%
+        $stripeFixedFee = 3; // 3 MXN fixed fee
+        $appFeePercentage = 0.036; // Additional 3.6% for the app
 
-        // Calculate the fee based on the recalculated original amount (for demonstration)
-        $calculatedFee = $amountBeforeFees * 0.036;
+        // Adjust the formula to calculate the amount before Stripe and app fees
+        $amountBeforeFees = ($totalAmountIncludingFees - $stripeFixedFee) / (1 + $stripeFeePercentage + $appFeePercentage);
 
-        // Calculate the final total to verify it matches the intended total amount including fees
-        $finalTotalWithFees = $amountBeforeFees + $calculatedFee;
+        // Recalculate the Stripe fee based on the amount before fees
+        $stripeFee = $amountBeforeFees * $stripeFeePercentage + $stripeFixedFee;
 
+        // Calculate the app fee
+        $appFee = $amountBeforeFees * $appFeePercentage;
 
-        $paymentData = $this->generateCheckoutInMx($finalTotalWithFees, $user->email, $calculatedFee, $route, $customer, $eventProfile);
+        // The merchant receives the amount before fees minus the app fee (since Stripe's fee is already considered)
+        $merchantAmount = $amountBeforeFees - $appFee;
 
-        //guarda el id de stripe para hacer match con el webhook cuando sea pagado
+        $paymentData = $this->generateCheckoutInMx($totalAmountIncludingFees * 100, $user->email, ($stripeFee + $appFee) * 100, $route, $customer, $eventProfile);
+
         $eventProfile->stripe_checkout_id = $paymentData->id;
         $eventProfile->stripe_webhook_email_notification = $user->email;
         $eventProfile->save();
