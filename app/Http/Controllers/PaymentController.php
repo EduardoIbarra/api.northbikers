@@ -215,12 +215,14 @@ class PaymentController extends BaseController
             ->update([
                 'stripe_checkout_id' => $stripe_id,
                 'payment_status' => $status,
-                'participant_number' => $participantNumber
+                'participant_number' => $participantNumber,
+                'event_profile_id' => $eventProfileId,
             ]);
 
         // Prepare data for SendGrid template
         $emailData = [
-            'participant_number' => $participantNumber
+            'participant_number' => $participantNumber,
+            'event_profile_id' => $eventProfileId,
         ];
 
         // Send confirmation email using SendGrid template
