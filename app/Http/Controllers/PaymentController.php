@@ -206,7 +206,7 @@ class PaymentController extends BaseController
             ->where('route_id', $routeId)
             ->max('participant_number') + 1;
 
-        \Log::info('Participan number: ' . $participantNumber);
+        \Log::info('Participant number: ' . $participantNumber);
 
 
         // Update the eventProfile on the database
@@ -216,7 +216,6 @@ class PaymentController extends BaseController
                 'stripe_checkout_id' => $stripe_id,
                 'payment_status' => $status,
                 'participant_number' => $participantNumber,
-                'event_profile_id' => $eventProfileId,
             ]);
 
         // Prepare data for SendGrid template
