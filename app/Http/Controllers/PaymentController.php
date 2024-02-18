@@ -79,7 +79,7 @@ class PaymentController extends BaseController
                 [
                     'quantity' => 1,
                     'price_data' => [
-                        'unit_amount' => $total * 100,
+                        'unit_amount' => $total,
                         'currency' => $customer->currency,
                         'product_data' => ['name' => strtoupper($route->title)]
                     ]
