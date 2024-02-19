@@ -224,9 +224,10 @@ class PaymentController extends BaseController
                 'participant_number' => $participantNumber,
             ]);
 
+        $participantNumberPadded = str_pad($participantNumber, 3, "0", STR_PAD_LEFT);
         // Prepare data for SendGrid template
         $emailData = [
-            'participant_number' => $participantNumber,
+            'participant_number' => $participantNumberPadded,
             'event_profile_id' => $eventProfileId,
         ];
 
