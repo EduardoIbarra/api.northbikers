@@ -87,7 +87,7 @@ class PaymentController extends BaseController
             ],
             'payment_intent_data' => [
                 'receipt_email' => $email,
-                'application_fee_amount' => ceil(($fee) * 100),
+                'application_fee_amount' => ceil($fee),
                 'transfer_data' => ['destination' => $customer->connected_stripe_account_id],
             ],
             'mode' => 'payment',
