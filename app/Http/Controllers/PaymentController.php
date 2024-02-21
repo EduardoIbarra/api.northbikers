@@ -131,57 +131,37 @@ class PaymentController extends BaseController
                 $eventProfileId = $event->data->object->client_reference_id;
                 $eventId = $event->id;
                 $status = $event->data->object->payment_status;
-
+                $paymentIntentId = $event->data->object->payment_intent;
                 // Perform necessary actions based on the event
-                $this->validateExternalPayment($stripeId, $eventProfileId, $eventId, $status);
-                break;
-            case 'refund.created':
-                // Extract required data from the event
-                $stripeId = $event->data->object->id;
-                $eventProfileId = $event->data->object->client_reference_id;
-                $status = $event->data->object->payment_status;
-
-                \Log::info('refund.created', [
-                    'stripeId' => $stripeId,
-                    'eventProfileId' => $eventProfileId,
-                    'status' => $status
-                ]);
-                break;
-            case 'refund.updated':
-                // Extract required data from the event
-                $stripeId = $event->data->object->id;
-                $eventProfileId = $event->data->object->client_reference_id;
-                $status = $event->data->object->payment_status;
-
-                \Log::info('refund.updated', [
-                    'stripeId' => $stripeId,
-                    'eventProfileId' => $eventProfileId,
-                    'status' => $status
-                ]);
-                break;
-            case 'charge.refund.updated':
-                // Extract required data from the event
-                $stripeId = $event->data->object->id;
-                $eventProfileId = $event->data->object->client_reference_id;
-                $status = $event->data->object->payment_status;
-
-                \Log::info('refund.created', [
-                    'stripeId' => $stripeId,
-                    'eventProfileId' => $eventProfileId,
-                    'status' => $status
-                ]);
+                $this->validateExternalPayment($stripeId, $eventProfileId, $eventId, $status, $paymentIntentId);
                 break;
             case 'charge.refunded':
                 // Extract required data from the event
                 $stripeId = $event->data->object->id;
-                $eventProfileId = $event->data->object->client_reference_id;
+                $paymentIntent = $event->data->object->payment_intent;
                 $status = $event->data->object->payment_status;
+                $isRefunded = $event->data->object->refunded;
 
-                \Log::info('refund.updated', [
-                    'stripeId' => $stripeId,
-                    'eventProfileId' => $eventProfileId,
-                    'status' => $status
-                ]);
+                if ($isRefunded) {
+                    // Log the refunded event details
+                    \Log::info('refund.refunded', [
+                        'stripeId' => $stripeId,
+                        'paymentIntent' => $paymentIntent,
+                        'status' => $status
+                    ]);
+
+                    // Update the event_profile table with payment_status and set participant_number to null
+                    \DB::table('event_profile')
+                        ->where('payment_intent', $paymentIntent)
+                        ->update([
+                            'payment_status' => 'refunded',
+                            'participant_number' => null
+                        ]);
+                } else {
+                    // Log that the refunded property was not set to true
+                    \Log::info('Refunded property was not set to true for event ID: ' . $event->id);
+                }
+
                 break;
             default:
                 // Handle other types of events if needed
@@ -229,42 +209,6 @@ class PaymentController extends BaseController
                 // Perform necessary actions based on the event
                 $this->validateExternalPayment($stripeId, $eventProfileId, $eventId, $status, $paymentIntentId);
                 break;
-            case 'refund.created':
-                // Extract required data from the event
-                $stripeId = $event->data->object->id;
-                $eventProfileId = $event->data->object->client_reference_id;
-                $status = $event->data->object->payment_status;
-
-                \Log::info('refund.created', [
-                    'stripeId' => $stripeId,
-                    'eventProfileId' => $eventProfileId,
-                    'status' => $status
-                ]);
-                break;
-            case 'refund.updated':
-                // Extract required data from the event
-                $stripeId = $event->data->object->id;
-                $eventProfileId = $event->data->object->client_reference_id;
-                $status = $event->data->object->payment_status;
-
-                \Log::info('refund.updated', [
-                    'stripeId' => $stripeId,
-                    'eventProfileId' => $eventProfileId,
-                    'status' => $status
-                ]);
-                break;
-            case 'charge.refund.updated':
-                // Extract required data from the event
-                $stripeId = $event->data->object->id;
-                $eventProfileId = $event->data->object->client_reference_id;
-                $status = $event->data->object->payment_status;
-
-                \Log::info('refund.created', [
-                    'stripeId' => $stripeId,
-                    'eventProfileId' => $eventProfileId,
-                    'status' => $status
-                ]);
-                break;
             case 'charge.refunded':
                 // Extract required data from the event
                 $stripeId = $event->data->object->id;
@@ -274,7 +218,7 @@ class PaymentController extends BaseController
 
                 if ($isRefunded) {
                     // Log the refunded event details
-                    \Log::info('refund.updated', [
+                    \Log::info('refund.refunded', [
                         'stripeId' => $stripeId,
                         'paymentIntent' => $paymentIntent,
                         'status' => $status
