@@ -101,13 +101,13 @@ class PaymentController extends BaseController
     public function handle_webhookConnectedAccounts(Request $request)
     {
         \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
-    
+
         // Retrieve the request body and signature header
         $payload = $request->getContent();
         $sigHeader = $request->header('Stripe-Signature');
-    
+
         $endpointSecret = env('STRIPE_WEBHOOK_OWN_SECRET');
-    
+
         try {
             // Construct the event
             $event = \Stripe\Webhook::constructEvent(
@@ -122,7 +122,7 @@ class PaymentController extends BaseController
             // Invalid signature
             return response()->json(['error' => 'Invalid signature'], 400);
         }
-    
+
         // Handle the event
         switch ($event->type) {
             case 'checkout.session.completed':
@@ -131,7 +131,7 @@ class PaymentController extends BaseController
                 $eventProfileId = $event->data->object->client_reference_id;
                 $eventId = $event->id;
                 $status = $event->data->object->payment_status;
-    
+
                 // Perform necessary actions based on the event
                 $this->validateExternalPayment($stripeId, $eventProfileId, $eventId, $status);
                 break;
@@ -187,7 +187,7 @@ class PaymentController extends BaseController
                 // Handle other types of events if needed
                 break;
         }
-    
+
         // Respond with success
         return response()->json(['success' => true]);
     }
@@ -195,13 +195,13 @@ class PaymentController extends BaseController
     public function handle_webhookOwnAccounts(Request $request)
     {
         \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
-    
+
         // Retrieve the request body and signature header
         $payload = $request->getContent();
         $sigHeader = $request->header('Stripe-Signature');
-    
+
         $endpointSecret = env('STRIPE_WEBHOOK_OWN_SECRET');
-    
+
         try {
             // Construct the event
             $event = \Stripe\Webhook::constructEvent(
@@ -216,7 +216,7 @@ class PaymentController extends BaseController
             // Invalid signature
             return response()->json(['error' => 'Invalid signature'], 400);
         }
-    
+
         // Handle the event
         switch ($event->type) {
             case 'checkout.session.completed':
@@ -225,9 +225,9 @@ class PaymentController extends BaseController
                 $eventProfileId = $event->data->object->client_reference_id;
                 $eventId = $event->id;
                 $status = $event->data->object->payment_status;
-    
+                $paymentIntentId = $event->data->object->payment_intent;
                 // Perform necessary actions based on the event
-                $this->validateExternalPayment($stripeId, $eventProfileId, $eventId, $status);
+                $this->validateExternalPayment($stripeId, $eventProfileId, $eventId, $status, $paymentIntentId);
                 break;
             case 'refund.created':
                 // Extract required data from the event
@@ -268,32 +268,49 @@ class PaymentController extends BaseController
             case 'charge.refunded':
                 // Extract required data from the event
                 $stripeId = $event->data->object->id;
-                $eventProfileId = $event->data->object->client_reference_id;
+                $paymentIntent = $event->data->object->payment_intent;
                 $status = $event->data->object->payment_status;
+                $isRefunded = $event->data->object->refunded;
 
-                \Log::info('refund.updated', [
-                    'stripeId' => $stripeId,
-                    'eventProfileId' => $eventProfileId,
-                    'status' => $status
-                ]);
+                if ($isRefunded) {
+                    // Log the refunded event details
+                    \Log::info('refund.updated', [
+                        'stripeId' => $stripeId,
+                        'paymentIntent' => $paymentIntent,
+                        'status' => $status
+                    ]);
+
+                    // Update the event_profile table with payment_status and set participant_number to null
+                    \DB::table('event_profile')
+                        ->where('payment_intent', $paymentIntent)
+                        ->update([
+                            'payment_status' => 'refunded',
+                            'participant_number' => null
+                        ]);
+                } else {
+                    // Log that the refunded property was not set to true
+                    \Log::info('Refunded property was not set to true for event ID: ' . $event->id);
+                }
+
                 break;
             default:
                 // Handle other types of events if needed
                 break;
         }
-    
+
         // Respond with success
         return response()->json(['success' => true]);
     }
 
-    private function validateExternalPayment($stripe_id, $eventProfileId, $stripe_event_id, $status)
+    private function validateExternalPayment($stripe_id, $eventProfileId, $stripe_event_id, $status, $paymentIntentId)
     {
         // Log a message to the Laravel log file
         \Log::info('Validating external payment', [
             'stripe_id' => $stripe_id,
             'eventProfileId' => $eventProfileId,
             'stripe_event_id' => $stripe_event_id,
-            'status' => $status
+            'status' => $status,
+            'paymentIntentId' => $paymentIntentId,
         ]);
 
         $eventProfile = EventProfile::find($eventProfileId);
@@ -318,6 +335,7 @@ class PaymentController extends BaseController
                 'stripe_checkout_id' => $stripe_id,
                 'payment_status' => $status,
                 'participant_number' => $participantNumber,
+                'payment_intent' => $paymentIntentId,
             ]);
 
         $participantNumberPadded = str_pad($participantNumber, 3, "0", STR_PAD_LEFT);
