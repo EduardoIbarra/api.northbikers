@@ -25,6 +25,11 @@ class PaymentController extends BaseController
                 'message' => 'Event profile not found.',
             ], 404); // 404 Not Found status code
         }
+        // Check if the payment status is 'paid'
+        if ($eventProfile->payment_status == 'paid') {
+            // Return a response indicating the user has already paid
+            return ['status' => 'error', 'message' => 'Su pago ya fue hecho anteriormente, por favor verifica tu correo con la confirmación.'];
+        }
         $route_id = $eventProfile->route_id;
         $user_id = $eventProfile->profile_id;
 
