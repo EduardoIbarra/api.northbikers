@@ -269,6 +269,18 @@ class PaymentController extends BaseController
             ->where('id', $eventProfileId)
             ->value('route_id');
 
+        if ($status == 'unpaid') {
+            // Update the eventProfile on the database
+            DB::table('event_profile')
+            ->where('id', $eventProfileId)
+            ->update([
+                'stripe_checkout_id' => $stripe_id,
+                'payment_status' => $status,
+                'payment_intent' => $paymentIntentId,
+            ]);
+            return;
+        }
+
         // Increment participant_number for the given route_id
         $participantNumber = DB::table('event_profile')
             ->where('route_id', $routeId)
