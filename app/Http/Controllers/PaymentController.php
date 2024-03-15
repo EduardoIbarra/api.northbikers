@@ -140,6 +140,16 @@ class PaymentController extends BaseController
                 // Perform necessary actions based on the event
                 $this->validateExternalPayment($stripeId, $eventProfileId, $eventId, $status, $paymentIntentId);
                 break;
+            case 'checkout.session.async_payment_succeeded':
+                // Extract required data from the event
+                $stripeId = $event->data->object->id;
+                $eventProfileId = $event->data->object->client_reference_id;
+                $eventId = $event->id;
+                $status = $event->data->object->payment_status;
+                $paymentIntentId = $event->data->object->payment_intent;
+                // Perform necessary actions based on the event
+                $this->validateExternalPayment($stripeId, $eventProfileId, $eventId, $status, $paymentIntentId);
+                break;
             case 'charge.refunded':
                 // Extract required data from the event
                 $stripeId = $event->data->object->id;
@@ -205,6 +215,16 @@ class PaymentController extends BaseController
         // Handle the event
         switch ($event->type) {
             case 'checkout.session.completed':
+                // Extract required data from the event
+                $stripeId = $event->data->object->id;
+                $eventProfileId = $event->data->object->client_reference_id;
+                $eventId = $event->id;
+                $status = $event->data->object->payment_status;
+                $paymentIntentId = $event->data->object->payment_intent;
+                // Perform necessary actions based on the event
+                $this->validateExternalPayment($stripeId, $eventProfileId, $eventId, $status, $paymentIntentId);
+                break;
+            case 'checkout.session.async_payment_succeeded':
                 // Extract required data from the event
                 $stripeId = $event->data->object->id;
                 $eventProfileId = $event->data->object->client_reference_id;
