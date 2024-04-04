@@ -31,4 +31,10 @@ class Route extends Model
     ];
 
     protected $dates = ['deleted_at'];
+
+    // Relationship with EventProfile
+    public function eventProfiles()
+    {
+        return $this->hasMany(EventProfile::class, 'route_id');
+    }
 }

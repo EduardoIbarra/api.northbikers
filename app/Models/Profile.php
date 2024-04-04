@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Profile extends Model
 {
     use HasFactory, SoftDeletes;
-    
+    protected $keyType = 'string';
     protected $table = 'profiles';
     protected $fillable = [
         'raw_user_meta_data',
@@ -61,4 +61,9 @@ class Profile extends Model
         'recovery_sent_at',
         'last_sign_in_at',
     ];
+
+    public function eventProfiles()
+    {
+        return $this->hasMany(EventProfile::class, 'profile_id');
+    }
 }

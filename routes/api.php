@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\ProfileController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -23,3 +24,4 @@ Route::get('generate_stripe_payment/{event_profile_id}', [PaymentController::cla
 Route::post('webhook_connected_account', [PaymentController::class,'handle_webhookConnectedAccounts']);
 Route::post('webhook_own_account', [PaymentController::class,'handle_webhookOwnAccounts']);
 Route::post('/contacts', [ContactController::class, 'store']);
+Route::get('get_user_stats/{event_profile_id}', [ProfileController::class,'getUserStats']);

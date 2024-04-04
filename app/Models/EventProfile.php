@@ -31,4 +31,16 @@ class EventProfile extends Model
         'payment_status',
         'stripe_webhook_email_notification',
     ];
+
+    // Relationship with Profile
+    public function profile()
+    {
+        return $this->belongsTo(Profile::class, 'profile_id');
+    }
+
+    // Relationship with Event (assuming Route model represents an event)
+    public function event()
+    {
+        return $this->belongsTo(Route::class, 'route_id');
+    }
 }
