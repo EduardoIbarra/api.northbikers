@@ -48,7 +48,10 @@ class PaymentController extends BaseController
 
         // User's total payment
         $totalAmountIncludingFees = ($route->referrer_price > 0 && $eventProfile->referrer != null) ? $route->referrer_price : $route->amount;
-        $totalAmountIncludingFees = ($eventProfile->is_couple) ? $route->couple_price : $totalAmountIncludingFees;
+        if($eventProfile->is_couple) {
+            $totalAmountIncludingFees = ($route->couple_referrer_price > 0 && $eventProfile->referrer != null) ? $route->couple_referrer_price : $route->couple_price;
+        }
+        // $totalAmountIncludingFees = ($eventProfile->is_couple) ? $route->couple_price : $totalAmountIncludingFees;
 
         // Calculate the Stripe and app fees and the merchant amount dynamically
         $stripeFeePercentage = 0.036; // 3.6%
