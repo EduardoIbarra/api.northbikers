@@ -25,11 +25,12 @@ class PaymentController extends BaseController
                 'message' => 'Event profile not found.',
             ], 404); // 404 Not Found status code
         }
+
         // Check if the payment status is 'paid'
         if ($eventProfile->payment_status == 'paid') {
-            // Return a response indicating the user has already paid
             return ['status' => 'error', 'message' => 'Su pago ya fue hecho anteriormente, por favor verifica tu correo con la confirmación.'];
         }
+
         $route_id = $eventProfile->route_id;
         $user_id = $eventProfile->profile_id;
 
@@ -37,7 +38,7 @@ class PaymentController extends BaseController
         $user = Profile::where('id', $user_id)->first();
         $customer = Customer::where('id', $route->customer_id)->first();
 
-        // if($neighborhood->currency_type == "mxn"){
+        // Minimum amount check
         if ($route->amount < 150) {
             return $this->sendError('NOT_MINIMUM_AMOUNT');
         }
@@ -46,12 +47,14 @@ class PaymentController extends BaseController
             return $this->sendError('ALREADY_PAID_REFRESH');
         }
 
-        // User's total payment
-        $totalAmountIncludingFees = ($route->referrer_price > 0 && $eventProfile->referrer != null) ? $route->referrer_price : $route->amount;
-        if($eventProfile->is_couple) {
+        // Determine the total payment amount based on the event profile type
+        if ($eventProfile->is_team) {
+            $totalAmountIncludingFees = ($route->team_referrer_price > 0 && $eventProfile->referrer != null) ? $route->team_referrer_price : $route->team_price;
+        } elseif ($eventProfile->is_couple) {
             $totalAmountIncludingFees = ($route->couple_referrer_price > 0 && $eventProfile->referrer != null) ? $route->couple_referrer_price : $route->couple_price;
+        } else {
+            $totalAmountIncludingFees = ($route->referrer_price > 0 && $eventProfile->referrer != null) ? $route->referrer_price : $route->amount;
         }
-        // $totalAmountIncludingFees = ($eventProfile->is_couple) ? $route->couple_price : $totalAmountIncludingFees;
 
         // Calculate the Stripe and app fees and the merchant amount dynamically
         $stripeFeePercentage = 0.036; // 3.6%
@@ -70,6 +73,7 @@ class PaymentController extends BaseController
         // The merchant receives the amount before fees minus the app fee (since Stripe's fee is already considered)
         $merchantAmount = $amountBeforeFees - $appFee;
 
+        // Generate the payment data using the calculated total amount
         $paymentData = $this->generateCheckoutInMx($totalAmountIncludingFees * 100, $user->email, ($stripeFee + $appFee) * 100, $route, $customer, $eventProfile);
 
         $eventProfile->stripe_checkout_id = $paymentData->id;
@@ -77,8 +81,8 @@ class PaymentController extends BaseController
         $eventProfile->save();
 
         return $this->sendResponse($paymentData, 'STRIPE_PAYMENT_LINK_GENERATED_SUCESSFULLY');
-
     }
+
 
     private function generateCheckoutInMx($total, $email, $fee, $route, $customer, $eventProfile)
     {
@@ -296,12 +300,12 @@ class PaymentController extends BaseController
         if ($status == 'unpaid') {
             // Update the eventProfile on the database
             DB::table('event_profile')
-            ->where('id', $eventProfileId)
-            ->update([
-                'stripe_checkout_id' => $stripe_id,
-                'payment_status' => $status,
-                'payment_intent' => $paymentIntentId,
-            ]);
+                ->where('id', $eventProfileId)
+                ->update([
+                    'stripe_checkout_id' => $stripe_id,
+                    'payment_status' => $status,
+                    'payment_intent' => $paymentIntentId,
+                ]);
             return;
         }
 
