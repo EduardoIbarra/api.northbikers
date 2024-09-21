@@ -316,7 +316,6 @@ class PaymentController extends BaseController
 
         \Log::info('Participant number: ' . $participantNumber);
 
-
         // Update the eventProfile on the database
         DB::table('event_profile')
             ->where('id', $eventProfileId)
@@ -328,15 +327,63 @@ class PaymentController extends BaseController
             ]);
 
         $participantNumberPadded = str_pad($participantNumber, 3, "0", STR_PAD_LEFT);
-        // Prepare data for SendGrid template
+
+        // Prepare data for email
         $emailData = [
             'participant_number' => $participantNumberPadded,
             'event_profile_id' => $eventProfileId,
         ];
 
+        // Send email
+        $this->sendConfirmationEmail($eventProfile, $emailData);
+    }
+
+    private function sendConfirmationEmailFromAPI(Request $request)
+    {
+        // Ensure the request contains the eventProfileId
+        if (!$request->has('eventProfileId')) {
+            return response()->json(['error' => 'eventProfileId is required'], 400);
+        }
+
+        $eventProfileId = $request->input('eventProfileId');
+
+        // Find the EventProfile by the provided ID
+        $eventProfile = EventProfile::find($eventProfileId);
+
+        // Ensure the EventProfile exists
+        if (!$eventProfile) {
+            return response()->json(['error' => 'EventProfile not found'], 404);
+        }
+
+        // Find the associated Route using the route_id from the EventProfile
+        $route = Route::find($eventProfile->route_id);
+
+        // Ensure the Route exists
+        if (!$route) {
+            return response()->json(['error' => 'Route not found'], 404);
+        }
+
+        // Prepare data for the email
+        $emailData = [
+            'participant_number' => str_pad($eventProfile->participant_number, 3, "0", STR_PAD_LEFT),
+            'route_title' => $route->title,
+            'event_profile_id' => $eventProfileId,
+        ];
+
+        // Send the email using the sendConfirmationEmail method
+        try {
+            $this->sendConfirmationEmail($eventProfile, $emailData);
+            return response()->json(['message' => 'Email sent successfully'], 200);
+        } catch (\Exception $e) {
+            \Log::error('Failed to send confirmation email: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to send confirmation email'], 500);
+        }
+    }
+
+
+    private function sendConfirmationEmail($eventProfile, $emailData)
+    {
         // Send confirmation email using SendGrid template
-        // Replace 'YOUR_SENDGRID_API_KEY' with your actual SendGrid API key
-        // Replace 'YOUR_TEMPLATE_ID' with your SendGrid template ID
         $email = new \SendGrid\Mail\Mail();
         $email->setFrom("advmx.lam@gmail.com", "Joaquín Lam de ADV NL");
         $email->setTemplateId("d-070db3211c604dd79dcd7b726dc10be1"); // Set SendGrid template ID
@@ -358,6 +405,7 @@ class PaymentController extends BaseController
             \Log::error('Failed to send email: ' . $e->getMessage());
         }
     }
+
 
 
 }
