@@ -338,7 +338,7 @@ class PaymentController extends BaseController
         $this->sendConfirmationEmail($eventProfile, $emailData);
     }
 
-    private function sendConfirmationEmailFromAPI(Request $request)
+    public function sendConfirmationEmailFromAPI(Request $request)
     {
         // Ensure the request contains the eventProfileId
         if (!$request->has('eventProfileId')) {
