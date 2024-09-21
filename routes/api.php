@@ -25,3 +25,4 @@ Route::post('webhook_connected_account', [PaymentController::class,'handle_webho
 Route::post('webhook_own_account', [PaymentController::class,'handle_webhookOwnAccounts']);
 Route::post('/contacts', [ContactController::class, 'store']);
 Route::get('get_user_stats/{event_profile_id}', [ProfileController::class,'getUserStats']);
+Route::post('send_confirmation_email', [PaymentController::class,'sendConfirmationEmailFromAPI']);
