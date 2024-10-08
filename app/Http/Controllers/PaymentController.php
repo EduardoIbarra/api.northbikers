@@ -49,11 +49,23 @@ class PaymentController extends BaseController
 
         // Determine the total payment amount based on the event profile type
         if ($eventProfile->is_team) {
-            $totalAmountIncludingFees = ($route->team_referrer_price > 0 && $eventProfile->referrer != null) ? $route->team_referrer_price : $route->team_price;
+            if ($route->allow_referrer_price && $route->team_referrer_price > 0 && $eventProfile->referrer != null) {
+                $totalAmountIncludingFees = $route->team_referrer_price;
+            } else {
+                $totalAmountIncludingFees = $route->team_price;
+            }
         } elseif ($eventProfile->is_couple) {
-            $totalAmountIncludingFees = ($route->couple_referrer_price > 0 && $eventProfile->referrer != null) ? $route->couple_referrer_price : $route->couple_price;
+            if ($route->allow_referrer_price && $route->couple_referrer_price > 0 && $eventProfile->referrer != null) {
+                $totalAmountIncludingFees = $route->couple_referrer_price;
+            } else {
+                $totalAmountIncludingFees = $route->couple_price;
+            }
         } else {
-            $totalAmountIncludingFees = ($route->referrer_price > 0 && $eventProfile->referrer != null) ? $route->referrer_price : $route->amount;
+            if ($route->allow_referrer_price && $route->referrer_price > 0 && $eventProfile->referrer != null) {
+                $totalAmountIncludingFees = $route->referrer_price;
+            } else {
+                $totalAmountIncludingFees = $route->amount;
+            }
         }
 
         // Calculate the Stripe and app fees and the merchant amount dynamically
