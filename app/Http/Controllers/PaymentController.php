@@ -18,12 +18,13 @@ class PaymentController extends BaseController
 {
     public function generateUrlToPay($event_profile_id)
     {
+        $coupon_code = request()->query('coupon_code');
         $eventProfile = EventProfile::find($event_profile_id);
         if (!$eventProfile) {
             return response()->json([
                 'success' => false,
                 'message' => 'Event profile not found.',
-            ], 404); // 404 Not Found status code
+            ], 404);
         }
 
         // Check if the payment status is 'paid'
@@ -43,58 +44,57 @@ class PaymentController extends BaseController
             return $this->sendError('NOT_MINIMUM_AMOUNT');
         }
 
-        if ($eventProfile->status == 'paid') {
-            return $this->sendError('ALREADY_PAID_REFRESH');
+        // Coupon logic
+        $discount = 0;
+        if ($coupon_code) {
+            $coupon = Coupon::where('code', $coupon_code)->first();
+            if ($coupon) {
+                if ($coupon->current_uses < 4 && $coupon->expires_at > now()) {
+                    $discount = $coupon->discount_percentage;
+                    // Increment the coupon usage
+                    $coupon->current_uses += 1;
+                    $coupon->save();
+                } else {
+                    return $this->sendError('COUPON_EXPIRED_OR_MAXIMUM_USES_REACHED');
+                }
+            } else {
+                return $this->sendError('INVALID_COUPON_CODE');
+            }
         }
 
-        // Determine the total payment amount based on the event profile type
+        // Determine the total payment amount
         if ($eventProfile->is_team) {
-            if ($route->allow_referrer_price && $route->team_referrer_price > 0 && $eventProfile->referrer != null) {
-                $totalAmountIncludingFees = $route->team_referrer_price;
-            } else {
-                $totalAmountIncludingFees = $route->team_price;
-            }
+            $totalAmountIncludingFees = $route->team_price;
         } elseif ($eventProfile->is_couple) {
-            if ($route->allow_referrer_price && $route->couple_referrer_price > 0 && $eventProfile->referrer != null) {
-                $totalAmountIncludingFees = $route->couple_referrer_price;
-            } else {
-                $totalAmountIncludingFees = $route->couple_price;
-            }
+            $totalAmountIncludingFees = $route->couple_price;
         } else {
-            if ($route->allow_referrer_price && $route->referrer_price > 0 && $eventProfile->referrer != null) {
-                $totalAmountIncludingFees = $route->referrer_price;
-            } else {
-                $totalAmountIncludingFees = $route->amount;
-            }
+            $totalAmountIncludingFees = $route->amount;
         }
 
-        // Calculate the Stripe and app fees and the merchant amount dynamically
-        $stripeFeePercentage = 0.036; // 3.6%
-        $stripeFixedFee = 3; // 3 MXN fixed fee
-        $appFeePercentage = 0.036; // Additional 3.6% for the app
+        // Apply discount
+        if ($discount > 0) {
+            $totalAmountIncludingFees *= (1 - ($discount / 100));
+        }
 
-        // Adjust the formula to calculate the amount before Stripe and app fees
+        // Calculate fees and generate payment data
+        $stripeFeePercentage = 0.036;
+        $stripeFixedFee = 3;
+        $appFeePercentage = 0.036;
+
         $amountBeforeFees = ($totalAmountIncludingFees - $stripeFixedFee) / (1 + $stripeFeePercentage + $appFeePercentage);
-
-        // Recalculate the Stripe fee based on the amount before fees
         $stripeFee = $amountBeforeFees * $stripeFeePercentage + $stripeFixedFee;
-
-        // Calculate the app fee
         $appFee = $amountBeforeFees * $appFeePercentage;
-
-        // The merchant receives the amount before fees minus the app fee (since Stripe's fee is already considered)
         $merchantAmount = $amountBeforeFees - $appFee;
 
-        // Generate the payment data using the calculated total amount
         $paymentData = $this->generateCheckoutInMx($totalAmountIncludingFees * 100, $user->email, ($stripeFee + $appFee) * 100, $route, $customer, $eventProfile);
 
         $eventProfile->stripe_checkout_id = $paymentData->id;
         $eventProfile->stripe_webhook_email_notification = $user->email;
+        $eventProfile->coupon_code = $coupon_code; // Save the coupon used
         $eventProfile->save();
 
         return $this->sendResponse($paymentData, 'STRIPE_PAYMENT_LINK_GENERATED_SUCESSFULLY');
     }
-
 
     private function generateCheckoutInMx($total, $email, $fee, $route, $customer, $eventProfile)
     {
