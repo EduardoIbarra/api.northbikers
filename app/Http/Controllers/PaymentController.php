@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\BaseController as BaseController;
+use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\EventProfile;
 use App\Models\Route;
