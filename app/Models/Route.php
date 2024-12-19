@@ -28,6 +28,7 @@ class Route extends Model
         'rules_file',
         'banner',
         'amount',
+        'whatsapp_group_url',
     ];
 
     protected $dates = ['deleted_at'];

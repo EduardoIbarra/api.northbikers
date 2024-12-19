@@ -381,6 +381,7 @@ class PaymentController extends BaseController
             'participant_number' => str_pad($eventProfile->participant_number, 3, "0", STR_PAD_LEFT),
             'route_title' => $route->title,
             'event_profile_id' => $eventProfileId,
+            'whatsapp_group_url' => $route->whatsapp_group_url,
         ];
 
         // Send the email using the sendConfirmationEmail method
