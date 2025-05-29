@@ -50,7 +50,7 @@ class PaymentController extends BaseController
         if ($coupon_code) {
             $coupon = Coupon::where('code', $coupon_code)->first();
             if ($coupon) {
-                if ($coupon->current_uses < 4 && $coupon->expires_at > now()) {
+                if ($coupon->current_uses < $coupon->max_uses && $coupon->expires_at > now()) {
                     $discount = $coupon->discount_percentage;
                     // Increment the coupon usage
                     $coupon->current_uses += 1;
