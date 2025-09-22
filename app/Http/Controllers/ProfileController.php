@@ -76,24 +76,17 @@ class ProfileController extends BaseController
         $routeId   = $eventProfile->route_id;   // routes.id
         $profileId = $eventProfile->profile_id;
 
-        // Check-ins del usuario para esta ruta (con checkpoint cargado para terreno/puntos)
+        // User check-ins for this route
         $checkins = Checkins::with(['checkpoint'])
             ->where('route_id', $routeId)
             ->where('profile_id', $profileId)
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Para marcar visitados por checkpoint_id tomando el check-in más reciente
+        // Latest by checkpoint
         $latestByCheckpoint = $checkins->unique('checkpoint_id')->keyBy('checkpoint_id');
 
-        /**
-         * TODOS los checkpoints definidos para la ruta en event_checkpoints:
-         *  - event_checkpoints.event_id  => routes.id (== $routeId)
-         *  - event_checkpoints.checkpoint_id -> checkpoints.id
-         *
-         * Si tienes columna de orden en event_checkpoints (p.ej. position), úsala para ordenar.
-         * Si NO existe, ordenamos por checkpoints.order (si existe) y como fallback por checkpoints.id.
-         */
+        // All checkpoints for the route from event_checkpoints
         $ecQuery = DB::table('event_checkpoints as ec')
             ->join('checkpoints as c', 'c.id', '=', 'ec.checkpoint_id')
             ->where('ec.event_id', $routeId)
@@ -105,12 +98,9 @@ class ProfileController extends BaseController
                 'c.picture',
                 'c.address',
                 'c.is_challenge',
-                // si tienes columnas extras en checkpoints, agrégalas aquí
-                DB::raw('COALESCE(c."order", 999999) as c_order') // Postgres; si usas MySQL cambia a backticks
+                DB::raw('COALESCE(c."order", 999999) as c_order'),
             ]);
 
-        // Orden amigable:
-        // 1) Si existe ec.position úsala primero
         $hasPosition = Schema::hasColumn('event_checkpoints', 'position');
         if ($hasPosition) {
             $ecQuery->addSelect(DB::raw('COALESCE(ec.position, 999999) as ec_position'))
@@ -123,9 +113,8 @@ class ProfileController extends BaseController
 
         $routeCheckpoints = collect($ecQuery->get());
 
-        // DTO: todos los checkpoints de la ruta + estado de visita del usuario
         $routeCheckpointDtos = $routeCheckpoints->map(function ($cp) use ($latestByCheckpoint) {
-            $chk = $latestByCheckpoint->get($cp->id); // último check-in (si existe)
+            $chk = $latestByCheckpoint->get($cp->id);
             return [
                 'id'            => (int) $cp->id,
                 'name'          => $cp->name,
@@ -140,7 +129,7 @@ class ProfileController extends BaseController
             ];
         });
 
-        // --- Estadísticas (tu lógica) + progreso usando TOTAL REAL de event_checkpoints ---
+        // --- Stats ---
         $stats = [
             'total_points'          => 0,
             'checkins_by_terrain'   => [],
@@ -171,12 +160,45 @@ class ProfileController extends BaseController
             ? round(($stats['visited_count'] / $stats['total_checkpoints']) * 100, 2)
             : 0;
 
-        // Respuesta
-        $response                   = new \stdClass();
-        $response->eventProfile     = $eventProfile;
-        $response->checkins         = $checkins;
-        $response->route_checkpoints = $routeCheckpointDtos;
-        $response->stats            = $stats;
+        // --- NEW: Awarded trophies for this profile & route ---
+        $trophies = DB::table('trophies as t')
+            ->join('trophy_types as tt', 'tt.id', '=', 't.trophy_type_id')
+            ->where('t.profile_id', $profileId)
+            ->where('t.route_id', $routeId)
+            ->orderBy('t.earned_at', 'desc')
+            ->select([
+                't.id',
+                't.earned_at',
+                't.source',
+                't.metadata',
+                'tt.code   as type_code',
+                'tt.name   as type_name',
+                'tt.description as type_description',
+                'tt.icon   as type_icon',
+                'tt.rarity as type_rarity',
+                'tt.xp_reward as type_xp_reward',
+            ])
+            ->get()
+            ->map(function ($row) {
+                // ensure metadata is array
+                $row->metadata = is_string($row->metadata) ? json_decode($row->metadata, true) : $row->metadata;
+                return $row;
+            });
+
+        $trophiesSummary = [
+            'total'      => $trophies->count(),
+            'by_code'    => $trophies->groupBy('type_code')->map->count(),
+            'xp_earned'  => $trophies->sum(fn($r) => (int) ($r->type_xp_reward ?? 0)),
+        ];
+
+        // Response
+        $response                        = new \stdClass();
+        $response->eventProfile          = $eventProfile;
+        $response->checkins              = $checkins;
+        $response->route_checkpoints     = $routeCheckpointDtos;
+        $response->stats                 = $stats;
+        $response->trophies              = $trophies;
+        $response->trophies_summary      = $trophiesSummary;
 
         return $this->sendResponse($response, 'EVENT_PROFILE_RETRIEVED');
     }
