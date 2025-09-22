@@ -76,17 +76,21 @@ class ProfileController extends BaseController
         $routeId   = $eventProfile->route_id;   // routes.id
         $profileId = $eventProfile->profile_id;
 
-        // User check-ins for this route
+        // Check-ins del usuario para esta ruta (con checkpoint cargado para terreno/puntos)
         $checkins = Checkins::with(['checkpoint'])
             ->where('route_id', $routeId)
             ->where('profile_id', $profileId)
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Latest by checkpoint
+        // Para marcar visitados por checkpoint_id tomando el check-in más reciente
         $latestByCheckpoint = $checkins->unique('checkpoint_id')->keyBy('checkpoint_id');
 
-        // All checkpoints for the route from event_checkpoints
+        /**
+         * TODOS los checkpoints definidos para la ruta en event_checkpoints:
+         *  - event_checkpoints.event_id  => routes.id (== $routeId)
+         *  - event_checkpoints.checkpoint_id -> checkpoints.id
+         */
         $ecQuery = DB::table('event_checkpoints as ec')
             ->join('checkpoints as c', 'c.id', '=', 'ec.checkpoint_id')
             ->where('ec.event_id', $routeId)
@@ -101,8 +105,8 @@ class ProfileController extends BaseController
                 DB::raw('COALESCE(c."order", 999999) as c_order'),
             ]);
 
-        $hasPosition = Schema::hasColumn('event_checkpoints', 'position');
-        if ($hasPosition) {
+        // Orden: si existe ec.position, úsalo
+        if (Schema::hasColumn('event_checkpoints', 'position')) {
             $ecQuery->addSelect(DB::raw('COALESCE(ec.position, 999999) as ec_position'))
                 ->orderBy('ec_position')
                 ->orderBy('c_order')
@@ -113,6 +117,7 @@ class ProfileController extends BaseController
 
         $routeCheckpoints = collect($ecQuery->get());
 
+        // DTO: todos los checkpoints + estado visitado
         $routeCheckpointDtos = $routeCheckpoints->map(function ($cp) use ($latestByCheckpoint) {
             $chk = $latestByCheckpoint->get($cp->id);
             return [
@@ -129,7 +134,7 @@ class ProfileController extends BaseController
             ];
         });
 
-        // --- Stats ---
+        // --- Estadísticas locales (compatibles con tu frontend actual) ---
         $stats = [
             'total_points'          => 0,
             'checkins_by_terrain'   => [],
@@ -160,45 +165,111 @@ class ProfileController extends BaseController
             ? round(($stats['visited_count'] / $stats['total_checkpoints']) * 100, 2)
             : 0;
 
-        // --- NEW: Awarded trophies for this profile & route ---
-        $trophies = DB::table('trophies as t')
-            ->join('trophy_types as tt', 'tt.id', '=', 't.trophy_type_id')
-            ->where('t.profile_id', $profileId)
-            ->where('t.route_id', $routeId)
-            ->orderBy('t.earned_at', 'desc')
-            ->select([
-                't.id',
-                't.earned_at',
-                't.source',
-                't.metadata',
-                'tt.code   as type_code',
-                'tt.name   as type_name',
-                'tt.description as type_description',
-                'tt.icon   as type_icon',
-                'tt.rarity as type_rarity',
-                'tt.xp_reward as type_xp_reward',
-            ])
-            ->get()
-            ->map(function ($row) {
-                // ensure metadata is array
-                $row->metadata = is_string($row->metadata) ? json_decode($row->metadata, true) : $row->metadata;
-                return $row;
-            });
+        // --- Trofeos/Awards por ruta y perfil ---
+        $awards = collect();
+        $awardsSummary = collect();
 
-        $trophiesSummary = [
-            'total'      => $trophies->count(),
-            'by_code'    => $trophies->groupBy('type_code')->map->count(),
-            'xp_earned'  => $trophies->sum(fn($r) => (int) ($r->type_xp_reward ?? 0)),
+        // Detecta tabla/columns (permitimos trophy_code o trophy_id)
+        $awardsTable = null;
+        if (Schema::hasTable('profile_trophy_awards')) {
+            $awardsTable = 'profile_trophy_awards';
+        } elseif (Schema::hasTable('trophy_awards')) {
+            $awardsTable = 'trophy_awards';
+        }
+
+        if ($awardsTable) {
+            $hasCode = Schema::hasColumn($awardsTable, 'trophy_code');
+            $joinOn  = $hasCode ? ['trophies.code', '=', $awardsTable . '.trophy_code']
+                : ['trophies.id',   '=', $awardsTable . '.trophy_id'];
+
+            // Lista de awards (múltiples del mismo tipo permitidos)
+            $awards = DB::table($awardsTable . ' as pta')
+                ->join('trophies as t', $joinOn[0], $joinOn[1], $joinOn[2])
+                ->where('pta.profile_id', $profileId)
+                ->where('pta.route_id', $routeId)
+                ->orderBy('pta.created_at', 'desc')
+                ->select([
+                    'pta.id as award_id',
+                    'pta.route_id',
+                    'pta.profile_id',
+                    $hasCode ? 'pta.trophy_code as trophy_key' : 'pta.trophy_id as trophy_key',
+                    'pta.points_awarded',
+                    'pta.created_at',
+                    't.code as trophy_code',
+                    't.id   as trophy_id',
+                    't.name',
+                    't.description',
+                    't.points as base_points',
+                    't.tier',
+                    't.icon',
+                ])
+                ->get();
+
+            // Resumen por tipo de trofeo
+            $awardsSummary = DB::table($awardsTable . ' as pta')
+                ->join('trophies as t', $joinOn[0], $joinOn[1], $joinOn[2])
+                ->where('pta.profile_id', $profileId)
+                ->where('pta.route_id', $routeId)
+                ->groupBy('t.code', 't.id', 't.name', 't.tier')
+                ->select([
+                    't.code as trophy_code',
+                    't.id   as trophy_id',
+                    't.name',
+                    't.tier',
+                    DB::raw('COUNT(*)::int as count'),
+                    DB::raw('COALESCE(SUM(pta.points_awarded),0)::int as total_points'),
+                ])
+                ->orderBy('t.tier')
+                ->orderBy('t.name')
+                ->get();
+        }
+
+        // --- Rank/Level a partir de profiles.xp y función level_for_xp(xp) ---
+        $xp = 0;
+        if (isset($eventProfile->profile) && property_exists($eventProfile->profile, 'xp')) {
+            $xp = (int) $eventProfile->profile->xp;
+        } else {
+            // fallback suave: usar total_points sólo para no romper UI
+            $xp = (int) $stats['total_points'];
+        }
+
+        $rank = [
+            'xp'            => $xp,
+            'level'         => 1,
+            'xp_into_level' => 0,
+            'xp_to_next'    => 500,
+            'progress_pct'  => 0.0,
+            'title'         => 'Novato',
         ];
 
-        // Response
+        try {
+            // requiere la función SQL creada: public.level_for_xp(int)
+            $row = DB::selectOne('select * from public.level_for_xp(?)', [$xp]);
+            if ($row) {
+                $rank = [
+                    'xp'            => $xp,
+                    'level'         => (int) $row->level,
+                    'xp_into_level' => (int) $row->xp_into_level,
+                    'xp_to_next'    => (int) $row->xp_to_next,
+                    'progress_pct'  => (float) $row->progress_pct,
+                    'title'         => (string) $row->title,
+                ];
+            }
+        } catch (\Throwable $e) {
+            // sin función: calcula un progreso simple para no romper
+            $rank['xp_into_level'] = $xp % 500;
+            $rank['progress_pct']  = round(($rank['xp_into_level'] / 500) * 100, 2);
+        }
+
+        // Respuesta
         $response                        = new \stdClass();
         $response->eventProfile          = $eventProfile;
         $response->checkins              = $checkins;
         $response->route_checkpoints     = $routeCheckpointDtos;
         $response->stats                 = $stats;
-        $response->trophies              = $trophies;
-        $response->trophies_summary      = $trophiesSummary;
+        $response->awards                = $awards;          // listado de trofeos otorgados (duplicados permitidos)
+        $response->awards_summary        = $awardsSummary;   // conteo por tipo
+        $response->rank                  = $rank;            // info de nivel/XP para UI
 
         return $this->sendResponse($response, 'EVENT_PROFILE_RETRIEVED');
     }
