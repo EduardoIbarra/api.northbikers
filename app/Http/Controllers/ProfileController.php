@@ -65,31 +65,40 @@ class ProfileController extends BaseController
 
     public function getUserStats($event_profile_id)
     {
-        $eventProfile = EventProfile::with(['profile', 'event', 'bike'])->find($event_profile_id);
-        if (!$eventProfile) {
+        // 1) Load EP with the relations you DO have
+        $epModel = EventProfile::with(['profile', 'event'])->find($event_profile_id);
+        if (!$epModel) {
             return response()->json([
                 'success' => false,
                 'message' => 'Event profile not found.',
             ], 404);
         }
 
-        $bike = DB::table('profile_bikes')->where('id', $eventProfile->bike_id)->first();
-        $eventProfile->setRelation('bike', collect($bike));
+        // 2) Fetch bike (no Eloquent relation needed)
+        $bike = null;
+        if (!empty($epModel->bike_id)) {
+            $bike = DB::table('profile_bikes')
+                ->where('id', $epModel->bike_id)
+                ->first();
+        }
 
-        $routeId   = $eventProfile->route_id;   // routes.id
-        $profileId = $eventProfile->profile_id;
+        // 3) Convert EP to array and embed bike so frontend can read eventProfile.bike
+        $eventProfile = $epModel->toArray();
+        $eventProfile['bike'] = $bike; // stdClass from query builder is fine in JSON
 
-        // User check-ins for this route
+        $routeId   = $epModel->route_id;
+        $profileId = $epModel->profile_id;
+
+        // --- Check-ins (unchanged) ---
         $checkins = Checkins::with(['checkpoint'])
             ->where('route_id', $routeId)
             ->where('profile_id', $profileId)
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Latest by checkpoint
         $latestByCheckpoint = $checkins->unique('checkpoint_id')->keyBy('checkpoint_id');
 
-        // All checkpoints for the route from event_checkpoints
+        // --- Full route checkpoints (unchanged) ---
         $ecQuery = DB::table('event_checkpoints as ec')
             ->join('checkpoints as c', 'c.id', '=', 'ec.checkpoint_id')
             ->where('ec.event_id', $routeId)
@@ -107,9 +116,7 @@ class ProfileController extends BaseController
         $hasPosition = Schema::hasColumn('event_checkpoints', 'position');
         if ($hasPosition) {
             $ecQuery->addSelect(DB::raw('COALESCE(ec.position, 999999) as ec_position'))
-                ->orderBy('ec_position')
-                ->orderBy('c_order')
-                ->orderBy('c.id');
+                ->orderBy('ec_position')->orderBy('c_order')->orderBy('c.id');
         } else {
             $ecQuery->orderBy('c_order')->orderBy('c.id');
         }
@@ -132,7 +139,7 @@ class ProfileController extends BaseController
             ];
         });
 
-        // --- Stats ---
+        // --- Stats (unchanged) ---
         $stats = [
             'total_points'          => 0,
             'checkins_by_terrain'   => [],
@@ -163,7 +170,7 @@ class ProfileController extends BaseController
             ? round(($stats['visited_count'] / $stats['total_checkpoints']) * 100, 2)
             : 0;
 
-        // --- Trophies (unchanged from your working version) ---
+        // --- Trophies (unchanged) ---
         $trophies = DB::table('trophies as t')
             ->join('trophy_types as tt', 'tt.id', '=', 't.trophy_type_id')
             ->where('t.profile_id', $profileId)
@@ -193,26 +200,23 @@ class ProfileController extends BaseController
             'xp_earned'  => $trophies->sum(fn($r) => (int) ($r->type_xp_reward ?? 0)),
         ];
 
-        // --- Levels payload for frontend + rider XP ---
-        $levels = collect();
-        if (Schema::hasTable('levels')) {
-            $levels = DB::table('levels')
-                ->orderBy('xp_required', 'asc')
-                ->select(['level', 'title', 'xp_required'])
-                ->get();
-        }
-        $profileXp = (int) ($eventProfile->profile->xp ?? 0);
+        // --- Levels + profile XP (unchanged) ---
+        $levels = Schema::hasTable('levels')
+            ? DB::table('levels')->orderBy('xp_required', 'asc')->select(['level', 'title', 'xp_required'])->get()
+            : collect();
 
-        // Response
+        $profileXp = (int) ($epModel->profile->xp ?? 0);
+
+        // --- Response ---
         $response                        = new \stdClass();
-        $response->eventProfile          = $eventProfile;
+        $response->eventProfile          = $eventProfile;   // array + embedded bike
         $response->checkins              = $checkins;
         $response->route_checkpoints     = $routeCheckpointDtos;
         $response->stats                 = $stats;
         $response->trophies              = $trophies;
         $response->trophies_summary      = $trophiesSummary;
-        $response->levels                = $levels;       // << add levels
-        $response->profile_xp            = $profileXp;    // << add current XP
+        $response->levels                = $levels;
+        $response->profile_xp            = $profileXp;
 
         return $this->sendResponse($response, 'EVENT_PROFILE_RETRIEVED');
     }
